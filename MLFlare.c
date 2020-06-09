@@ -285,7 +285,6 @@ bool ReleaseSysResource() {
     sprintf(filename, "%s/Documents/Flare/profile.ini", homepath);
     CreateLogPath("/Documents/Flare/");
     SetIniFileName(filename);
-    free(homepath); homepath = NULL;
     
 //    int count = GetCountOfPtr(duts);
     for (int axis = 0; axis < MLMaxAxisCount; axis++) {
@@ -841,6 +840,7 @@ void ResetSystem(void) {
 
 void Disconnect(void) {
     if (gHandle != -1) {
+        Logger(MLLogInfo, "<%s>: Disconnect controller.\n", __func__);
         gStopped = true;
         AllAxisStop();                      // stop all axis before disconnect controller.
         usleep(250000);
@@ -2264,6 +2264,74 @@ void SetAxisRatio(int axis, double ratio) {
     gAxisPrm[axis] = prm;
 }
 
+static bool SetOutputBitState(MLOutSensor outbit, MLLevel level)
+{
+    bool flag = false;
+    unsigned int reverseLevel = abs((int)(level - 1));
+    
+    if (gHandle != -1) {
+        switch (outbit) {
+            case MLOutCylinderHome:
+                if (0 == smc_write_outbit(gHandle, outbit, level) && 0 == smc_write_outbit(gHandle, MLOutCylinderShop, reverseLevel)) {
+                    int time = 0;
+                    
+                    do {
+                        if (level == MLLow) {
+                            if (lightTestReadyed) {
+                                flag = true;
+                                break;
+                            }
+                        } else {
+                            if (!lightTestReadyed) {
+                                flag = true;
+                                break;
+                            }
+                        }
+                        
+                        usleep(500000);
+                        time += 500;
+                    } while (time < 8000);
+                }
+                break;
+            case MLOutCylinderShop:
+                if (0 == smc_write_outbit(gHandle, outbit, level)  && 0 == smc_write_outbit(gHandle, MLOutCylinderHome, reverseLevel)) {
+                    int time = 0;
+                    
+                    do {
+                        if (level == MLLow) {
+                            if (lightTestReadyed) {
+                                flag = true;
+                                break;
+                            }
+                        } else {
+                            if (!lightTestReadyed) {
+                                flag = true;
+                                break;
+                            }
+                        }
+                        
+                        usleep(500000);
+                        time += 500;
+                    } while (time < 8000);
+                }
+                break;
+            case MLOutLeftDoorOpen:
+            case MLOutLeftDoorClose:
+            case MLOutRightDoorOpen:
+            case MLOutRightDoorClose:
+                break;
+                
+            default:
+                if (0 == smc_write_outbit(gHandle, outbit, level)) {
+                    flag = true;
+                }
+                break;
+        }
+    }
+    
+    return flag;
+}
+
 void SetBitState(int bit, MLLevel level) {
     if (gHandle != -1) {
         smc_write_outbit(gHandle, bit, level);
@@ -2434,7 +2502,7 @@ bool DoorOpen() {
         smc_write_outbit(gHandle, MLOutLeftDoorOpen, MLHigh);
         smc_write_outbit(gHandle, MLOutLight, MLLow);      // 打开日光灯
         
-        if (time >= 7000) {
+        if (!doorOpened) {
             Logger(MLLogError, "<%s>: Undetected auto-door status signal after OPEN the door\n", __func__);
             return false;
         }
@@ -2461,7 +2529,7 @@ bool DoorClose() {
         while (doorOpened && time < 7000) { time += 500; usleep(500000); }
         smc_write_outbit(gHandle, MLOutLeftDoorClose, MLHigh);
         
-        if (time >= 7000) {
+        if (doorOpened) {
             Logger(MLLogError, "<%s>: Undetected auto-door status signal after CLOSE the door\n", __func__);
             return false;
         }
@@ -4171,14 +4239,29 @@ double GetLuxmeter(string portName) {
         smc_write_outbit(gHandle, MLOutLaserPower, MLHigh);
         smc_write_outbit(gHandle, MLOutSpotPower, MLHigh);
         
+        // To avoid a collision
         int iostate = CheckAxisIOState(MLAxisLight);
         Logger(MLLogInfo, "<%s>: Axis %d state is %d.\n", __func__, MLAxisLight, iostate);
         
         if (iostate != 2 && iostate != 0) {
             JMoveAxisWithBlock(MLAxisLight, 0, false);
         }
-//        JMoveAxisWithBlock(MLAxisLaser, 0);
         
+        iostate = CheckAxisIOState(MLAxisLight);
+        
+        if (iostate != 2) {
+            Logger(MLLogError, "<%s>: Fail to move axis {%d} to negative limit.\n", __func__, MLAxisLight);
+            return measValue;
+        }
+        
+        JMoveAxisWithBlock(MLAxisLaser, 0, false);
+        
+        if (CheckAxisIOState(MLAxisLaser) != 2) {
+            Logger(MLLogError, "<%s>: Fail to move axis {%d} to negative limit.\n", __func__, MLAxisLaser);
+            return measValue;
+        }
+        
+        // Close auto-door
         DoorClose();
         if (doorOpened) {
             Logger(MLLogError, "<%s>: Fail to close auto-door.\n", __func__);
@@ -4187,8 +4270,13 @@ double GetLuxmeter(string portName) {
         
         if (!bCalibrated) {
             calLuxVals = (MLLuxMeterVal *)malloc(sizeof(MLLuxMeterVal));
-            SetBitState(MLOutCylinderHome, MLLow);
-            while (lightTestReadyed) { usleep(500000); }       // check state every 500ms.
+//            SetBitState(MLOutCylinderHome, MLLow);
+//            while (lightTestReadyed) { usleep(500000); }       // check state every 500ms.
+            
+            if (!SetOutputBitState(MLOutCylinderHome, MLLow)) {
+                Logger(MLLogError, "<%s>: Fail to move luxmeter to init poistion.\n", __func__);
+                return measValue;
+            }
             calLuxVals->lv = GetIlluminanceValue(5000);
             measValue = calLuxVals->lv;
             Logger(MLLogInfo, "<%s>: Get Illuminometer Calibrate value = %lf.\n", __func__, calLuxVals->lv);
@@ -4204,7 +4292,12 @@ double GetLuxmeter(string portName) {
             SetBitState(MLOutCylinderShop, MLLow);
         }
         
-        while (!lightTestReadyed) { usleep(500000); }       // check state every 500ms.
+//        while (!lightTestReadyed) { usleep(500000); }       // check state every 500ms.
+        
+        if (!SetOutputBitState(MLOutCylinderShop, MLLow)) {
+            Logger(MLLogError, "<%s>: Fail to move luxmeter to test poistion.\n", __func__);
+            return measValue;
+        }
         
         gIsTesting = false;
     } else {
