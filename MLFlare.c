@@ -139,7 +139,36 @@ void ResetAllAxis(bool pthread);
 // ========================= private method ============================
 
 char* GetLibraryVersion(void) {
-    return "v1.2.2";
+    return "v1.2.3";
+}
+
+static char** ListUSBDeviceNames(int *count)
+{
+    FILE        *fd = NULL;
+    char        line[64];
+    int         index = 0;
+    char        **dev_names;
+    
+    dev_names = (char **)malloc(16 * sizeof(char*));
+    fd = popen("ls /dev", "r");         // get port device name by pipe.
+    
+    if (NULL != fd) {
+        while (fgets(line, 64, fd) != NULL) {
+            char *ptr = strstr(line, "cu.usb");
+            
+            if (ptr != NULL) {
+                size_t n = strlen(line) + strlen("/dev/");
+                char *item = (char *)malloc((n + 1) * sizeof(char));
+                snprintf(item, n, "/dev/%s", line);
+                dev_names[index++] = item;
+            }
+        }
+        pclose(fd);
+        fd = NULL;
+    }
+    *count = index--;
+    
+    return dev_names;
 }
 
 char* CreateLogPath(char *path)  {
@@ -256,6 +285,42 @@ void Logger(MLLogLevel type, char* message, ...) {
     path = NULL;
 }
 
+static bool ContainString(const char *array[], int array_size, const char *target_str)
+{
+    bool success = false;
+    
+    for (int i = 0; i < array_size; i++) {
+        char *ptr = (char*)array[i];
+        
+        if (!strcmp(ptr, target_str)) {
+            success = true;
+            break;
+        }
+    }
+    
+    return success;
+}
+
+static int CheckDeviceName(const char *device_array[], int array_size, const char *device_name)
+{
+    int error_code = 0;
+    bool existed = true;
+    
+    if (NULL == device_name) {
+        error_code = 1;
+        return error_code;
+    }
+    
+    existed = ContainString(device_array, array_size, device_name);
+    
+    if (!existed) {
+        error_code = 1;
+        Logger(MLLogError, "<%s>: Undetect device's name named '%s' on the computer.\n", __func__, device_name);
+    }
+    
+    return error_code;
+}
+
 void LoadDefaultProfile() {
     SetIniFileName(MLConfigFileName);
 //    double startSpeed = GetDoubleValue("axis_0", "start_speed");
@@ -285,7 +350,6 @@ bool ReleaseSysResource() {
     sprintf(filename, "%s/Documents/Flare/profile.ini", homepath);
     CreateLogPath("/Documents/Flare/");
     SetIniFileName(filename);
-    free(homepath); homepath = NULL;
     
 //    int count = GetCountOfPtr(duts);
     for (int axis = 0; axis < MLMaxAxisCount; axis++) {
@@ -501,6 +565,9 @@ bool InitializeSystem() {
         title = NULL;
     }
     
+    int count;
+    const char **device_names = (const char**)ListUSBDeviceNames(&count);
+    
     // loadcell port name.
     leftCellPortName = (string)malloc(128);
     rightCellPortName = (string)malloc(128);
@@ -512,7 +579,11 @@ bool InitializeSystem() {
         InsertStringValue("loadcell", NULL, "left_side_portname", "/dev/cu.usbserial-ClampLeft");
         flag = false;
     } else {
-        if (strlen(leftCellPortName) <= 4) { flag = false; }
+        if (CheckDeviceName(device_names, count, leftCellPortName)) {
+            Logger(MLLogError, "{left side}, Not find port name '%s' on computer.\n", leftCellPortName);
+            flag = false;
+        }
+//        if (strlen(leftCellPortName) <= 4) { flag = false; }
     }
     
     if (!GetStringValue("loadcell", "right_side_portname", rightCellPortName)) {
@@ -520,7 +591,11 @@ bool InitializeSystem() {
         InsertStringValue("loadcell", NULL, "right_side_portname", "/dev/cu.usbserial-ClampRight");
         flag = false;
     } else {
-        if (strlen(rightCellPortName) <= 4) { flag = false; }
+        if (CheckDeviceName(device_names, count, rightCellPortName)) {
+            Logger(MLLogError, "{right side}, Not find port name '%s' on computer.\n", leftCellPortName);
+            flag = false;
+        }
+//        if (strlen(rightCellPortName) <= 4) { flag = false; }
     }
     
     if (!GetStringValue("loadcell", "front_side_portname", frontCellPortName)) {
@@ -528,7 +603,11 @@ bool InitializeSystem() {
         InsertStringValue("loadcell", NULL, "front_side_portname", "/dev/cu.usbserial-ClampFront");
         flag = false;
     } else {
-        if (strlen(frontCellPortName) <= 4) { flag = false; }
+        if (CheckDeviceName(device_names, count, frontCellPortName)) {
+            Logger(MLLogError, "{front side}, Not find port name '%s' on computer.\n", leftCellPortName);
+            flag = false;
+        }
+//        if (strlen(frontCellPortName) <= 4) { flag = false; }
     }
     
     if (!GetStringValue("loadcell", "back_side_portname", backCellPortName)) {
@@ -536,7 +615,11 @@ bool InitializeSystem() {
         InsertStringValue("loadcell", NULL, "back_side_portname", "/dev/cu.usbserial-ClampBack");
         flag = false;
     } else {
-        if (strlen(backCellPortName) <= 4) { flag = false; }
+        if (CheckDeviceName(device_names, count, backCellPortName)) {
+            Logger(MLLogError, "{back side}, Not find port name '%s' on computer.\n", leftCellPortName);
+            flag = false;
+        }
+//        if (strlen(backCellPortName) <= 4) { flag = false; }
     }
     
     laserPortName = (string)malloc(128);
@@ -546,7 +629,11 @@ bool InitializeSystem() {
         InsertStringValue("laser", NULL, "portname", "/dev/cu.usbserial-Laser");
         flag = false;
     } else {
-        if (strlen(laserPortName) <= 4) { flag = false; }
+        if (CheckDeviceName(device_names, count, laserPortName)) {
+            Logger(MLLogError, "{laser}, Not find port name '%s' on computer.\n", leftCellPortName);
+            flag = false;
+        }
+//        if (strlen(laserPortName) <= 4) { flag = false; }
     }
     
     illuminometerPortName = (string)malloc(128);
@@ -566,7 +653,11 @@ bool InitializeSystem() {
         InsertStringValue("angle", NULL, "portname", "/dev/cu.usbserial-Angle");
         flag = false;
     } else {
-        if (strlen(anglePortName) <= 4) { flag = false; }
+        if (CheckDeviceName(device_names, count, anglePortName)) {
+            Logger(MLLogError, "{angle}, Not find port name '%s' on computer.\n", leftCellPortName);
+            flag = false;
+        }
+//        if (strlen(anglePortName) <= 4) { flag = false; }
     }
     hasInitialzed = true;
     return flag;
@@ -841,6 +932,7 @@ void ResetSystem(void) {
 
 void Disconnect(void) {
     if (gHandle != -1) {
+        Logger(MLLogInfo, "<%s>: Disconnect controller.\n", __func__);
         gStopped = true;
         AllAxisStop();                      // stop all axis before disconnect controller.
         usleep(250000);
@@ -2264,6 +2356,74 @@ void SetAxisRatio(int axis, double ratio) {
     gAxisPrm[axis] = prm;
 }
 
+static bool SetOutputBitState(MLOutSensor outbit, MLLevel level)
+{
+    bool flag = false;
+    unsigned int reverseLevel = abs((int)(level - 1));
+    
+    if (gHandle != -1) {
+        switch (outbit) {
+            case MLOutCylinderHome:
+                if (0 == smc_write_outbit(gHandle, outbit, level) && 0 == smc_write_outbit(gHandle, MLOutCylinderShop, reverseLevel)) {
+                    int time = 0;
+                    
+                    do {
+                        if (level == MLLow) {
+                            if (lightTestReadyed) {
+                                flag = true;
+                                break;
+                            }
+                        } else {
+                            if (!lightTestReadyed) {
+                                flag = true;
+                                break;
+                            }
+                        }
+                        
+                        usleep(500000);
+                        time += 500;
+                    } while (time < 8000);
+                }
+                break;
+            case MLOutCylinderShop:
+                if (0 == smc_write_outbit(gHandle, outbit, level)  && 0 == smc_write_outbit(gHandle, MLOutCylinderHome, reverseLevel)) {
+                    int time = 0;
+                    
+                    do {
+                        if (level == MLLow) {
+                            if (lightTestReadyed) {
+                                flag = true;
+                                break;
+                            }
+                        } else {
+                            if (!lightTestReadyed) {
+                                flag = true;
+                                break;
+                            }
+                        }
+                        
+                        usleep(500000);
+                        time += 500;
+                    } while (time < 8000);
+                }
+                break;
+            case MLOutLeftDoorOpen:
+            case MLOutLeftDoorClose:
+            case MLOutRightDoorOpen:
+            case MLOutRightDoorClose:
+                break;
+                
+            default:
+                if (0 == smc_write_outbit(gHandle, outbit, level)) {
+                    flag = true;
+                }
+                break;
+        }
+    }
+    
+    return flag;
+}
+
 void SetBitState(int bit, MLLevel level) {
     if (gHandle != -1) {
         smc_write_outbit(gHandle, bit, level);
@@ -2434,7 +2594,7 @@ bool DoorOpen() {
         smc_write_outbit(gHandle, MLOutLeftDoorOpen, MLHigh);
         smc_write_outbit(gHandle, MLOutLight, MLLow);      // 打开日光灯
         
-        if (time >= 7000) {
+        if (!doorOpened) {
             Logger(MLLogError, "<%s>: Undetected auto-door status signal after OPEN the door\n", __func__);
             return false;
         }
@@ -2461,7 +2621,7 @@ bool DoorClose() {
         while (doorOpened && time < 7000) { time += 500; usleep(500000); }
         smc_write_outbit(gHandle, MLOutLeftDoorClose, MLHigh);
         
-        if (time >= 7000) {
+        if (doorOpened) {
             Logger(MLLogError, "<%s>: Undetected auto-door status signal after CLOSE the door\n", __func__);
             return false;
         }
@@ -4171,14 +4331,29 @@ double GetLuxmeter(string portName) {
         smc_write_outbit(gHandle, MLOutLaserPower, MLHigh);
         smc_write_outbit(gHandle, MLOutSpotPower, MLHigh);
         
+        // To avoid a collision
         int iostate = CheckAxisIOState(MLAxisLight);
         Logger(MLLogInfo, "<%s>: Axis %d state is %d.\n", __func__, MLAxisLight, iostate);
         
         if (iostate != 2 && iostate != 0) {
             JMoveAxisWithBlock(MLAxisLight, 0, false);
         }
-//        JMoveAxisWithBlock(MLAxisLaser, 0);
         
+        iostate = CheckAxisIOState(MLAxisLight);
+        
+        if (iostate != 2) {
+            Logger(MLLogError, "<%s>: Fail to move axis {%d} to negative limit.\n", __func__, MLAxisLight);
+            return measValue;
+        }
+        
+        JMoveAxisWithBlock(MLAxisLaser, 0, false);
+        
+        if (CheckAxisIOState(MLAxisLaser) != 2) {
+            Logger(MLLogError, "<%s>: Fail to move axis {%d} to negative limit.\n", __func__, MLAxisLaser);
+            return measValue;
+        }
+        
+        // Close auto-door
         DoorClose();
         if (doorOpened) {
             Logger(MLLogError, "<%s>: Fail to close auto-door.\n", __func__);
@@ -4187,8 +4362,13 @@ double GetLuxmeter(string portName) {
         
         if (!bCalibrated) {
             calLuxVals = (MLLuxMeterVal *)malloc(sizeof(MLLuxMeterVal));
-            SetBitState(MLOutCylinderHome, MLLow);
-            while (lightTestReadyed) { usleep(500000); }       // check state every 500ms.
+//            SetBitState(MLOutCylinderHome, MLLow);
+//            while (lightTestReadyed) { usleep(500000); }       // check state every 500ms.
+            
+            if (!SetOutputBitState(MLOutCylinderHome, MLLow)) {
+                Logger(MLLogError, "<%s>: Fail to move luxmeter to init poistion.\n", __func__);
+                return measValue;
+            }
             calLuxVals->lv = GetIlluminanceValue(5000);
             measValue = calLuxVals->lv;
             Logger(MLLogInfo, "<%s>: Get Illuminometer Calibrate value = %lf.\n", __func__, calLuxVals->lv);
@@ -4204,7 +4384,12 @@ double GetLuxmeter(string portName) {
             SetBitState(MLOutCylinderShop, MLLow);
         }
         
-        while (!lightTestReadyed) { usleep(500000); }       // check state every 500ms.
+//        while (!lightTestReadyed) { usleep(500000); }       // check state every 500ms.
+        
+        if (!SetOutputBitState(MLOutCylinderShop, MLLow)) {
+            Logger(MLLogError, "<%s>: Fail to move luxmeter to test poistion.\n", __func__);
+            return measValue;
+        }
         
         gIsTesting = false;
     } else {
