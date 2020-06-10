@@ -123,54 +123,10 @@ static bool isNeedStop = false;
 static bool isNeedEmgStop = false;
 static bool isActiveFinished = false;
 
-static double startSpeedDef[] = {100, 10, 2, 3, 5, 5,  2, 5,  5,  1, 40,  1,  1,  100,  100,  100};
-static double runSpeedDef[] =   {100, 20, 3, 5, 5, 15, 8, 15, 15, 8, 120, 10, 10, 1000, 1000, 1000};
-static double stopSpeedDef[] =  {100, 10, 2, 3, 5, 5,  2, 5,  5,  1, 40,  1,  1,  100,  100,  100};
-static double homeSpeedDef[] =  {100, 20, 3, 5, 5, 15, 8, 15, 15, 5, 120, 10, 10, 1000, 1000, 1000};
-static double accTImeDef[] =    {0.2, 1,  1, 1, 1, 1,  1, 1,  1,  1, 3,   1,  1,  0.1,  0.1,  0.1};
-static double ppRatioDef[] =    {0,  100, 2500, 2500, 15000, 1000, 1000, 1000, 1000, 40000, 800, 2000, 2000, 100, 100, 100};
-static int homeDirDef = 1;
-static int homeLevelDef = 0;
-static bool hasInitialzed = false;
-
 void MoveToInitPos(int *axises, int count);
 void ResetAllAxis(bool pthread);
 
 // ========================= private method ============================
-
-char* GetLibraryVersion(void) {
-    return "v1.2.3";
-}
-
-static char** ListUSBDeviceNames(int *count)
-{
-    FILE        *fd = NULL;
-    char        line[64];
-    int         index = 0;
-    char        **dev_names;
-    
-    dev_names = (char **)malloc(16 * sizeof(char*));
-    fd = popen("ls /dev", "r");         // get port device name by pipe.
-    
-    if (NULL != fd) {
-        while (fgets(line, 64, fd) != NULL) {
-            char *ptr = strstr(line, "cu.usb");
-            
-            if (ptr != NULL) {
-                size_t n = strlen(line) + strlen("/dev/");
-                char *item = (char *)malloc((n + 1) * sizeof(char));
-                snprintf(item, n, "/dev/%s", line);
-                dev_names[index++] = item;
-            }
-        }
-        pclose(fd);
-        fd = NULL;
-    }
-    *count = index--;
-    
-    return dev_names;
-}
-
 char* CreateLogPath(char *path)  {
     char *flareLogPath;
     char cmd[128];
@@ -285,42 +241,6 @@ void Logger(MLLogLevel type, char* message, ...) {
     path = NULL;
 }
 
-static bool ContainString(const char *array[], int array_size, const char *target_str)
-{
-    bool success = false;
-    
-    for (int i = 0; i < array_size; i++) {
-        char *ptr = (char*)array[i];
-        
-        if (!strcmp(ptr, target_str)) {
-            success = true;
-            break;
-        }
-    }
-    
-    return success;
-}
-
-static int CheckDeviceName(const char *device_array[], int array_size, const char *device_name)
-{
-    int error_code = 0;
-    bool existed = true;
-    
-    if (NULL == device_name) {
-        error_code = 1;
-        return error_code;
-    }
-    
-    existed = ContainString(device_array, array_size, device_name);
-    
-    if (!existed) {
-        error_code = 1;
-        Logger(MLLogError, "<%s>: Undetect device's name named '%s' on the computer.\n", __func__, device_name);
-    }
-    
-    return error_code;
-}
-
 void LoadDefaultProfile() {
     SetIniFileName(MLConfigFileName);
 //    double startSpeed = GetDoubleValue("axis_0", "start_speed");
@@ -339,34 +259,23 @@ int GetCountOfPtr(MLDUT *buffer) {
     return currentDUTTypeCnt;
 }
 
-bool ReleaseSysResource() {
-    if (!hasInitialzed) {
-        return false;
-    }
-    
-    bool flag = true;
-    char filename[128];
-    char *homepath = getenv("HOME");
-    sprintf(filename, "%s/Documents/Flare/profile.ini", homepath);
-    CreateLogPath("/Documents/Flare/");
-    SetIniFileName(filename);
-    
+void ReleaseSysResource() {
 //    int count = GetCountOfPtr(duts);
     for (int axis = 0; axis < MLMaxAxisCount; axis++) {
         AxisParam param = gAxisPrm[axis];
         
         char *title = (char *)malloc(32);
         sprintf(title, "axis_%d", axis);
-        if (!PutDoubleValue(title, "start_speed", param.startSpeed)) { Logger(MLLogError, "%s when save start speed at axis %d\n", GetConfigFileErrorMessage(), param.axis); flag = false; }
-        if (!PutDoubleValue(title, "run_speed",   param.runSpeed)) { Logger(MLLogError, "%s when save run speed at axis %d\n", GetConfigFileErrorMessage(), param.axis); flag = false; }
-        if (!PutDoubleValue(title, "stop_speed",  param.stopSpeed)) { Logger(MLLogError, "%s when save stop speed at axis %d\n", GetConfigFileErrorMessage(), param.axis); flag = false; }
-        if (!PutDoubleValue(title, "home_speed",  param.homeSpeed)) { Logger(MLLogError, "%s when save home speed at axis %d\n", GetConfigFileErrorMessage(), param.axis); flag = false; }
-        if (!PutDoubleValue(title, "acc_time",    param.accTime)) { Logger(MLLogError, "%s when save acc time at axis %d\n", GetConfigFileErrorMessage(), param.axis); flag = false; }
-        if (!PutIntValue(title,    "home_dir",    param.homeDirect)) { Logger(MLLogError, "%s when save home direction at axis %d\n", GetConfigFileErrorMessage(), param.axis); flag = false; }
-        if (!PutIntValue(title,    "home_level",  param.homeLevel)) { Logger(MLLogError, "%s when save home leveel at axis %d\n", GetConfigFileErrorMessage(), param.axis); flag = false; }
-        if (!PutDoubleValue(title, "pp_ratio",    param.ppratio)) { Logger(MLLogError, "%s when save pp_ratio at axis %d\n", GetConfigFileErrorMessage(), param.axis); flag = false; }
-        if (!PutDoubleValue(title, "initialize_positon", param.posToInit)) { Logger(MLLogError, "%s when save initialize position at axis %d\n", GetConfigFileErrorMessage(), param.axis); flag = false; }
-        if (!PutDoubleValue(title, "test_position", param.posToTest)) { Logger(MLLogError, "%s when save test position at axis %d\n", GetConfigFileErrorMessage(), param.axis); flag = false; }
+        PutDoubleValue(title, "start_speed", param.startSpeed);
+        PutDoubleValue(title, "run_speed",   param.runSpeed);
+        PutDoubleValue(title, "stop_speed",  param.stopSpeed);
+        PutDoubleValue(title, "home_speed",  param.homeSpeed);
+        PutDoubleValue(title, "acc_time",    param.accTime);
+        PutIntValue(title,    "home_dir",    param.homeDirect);
+        PutIntValue(title,    "home_level",  param.homeLevel);
+        PutDoubleValue(title, "pp_ratio",    param.ppratio);
+        PutDoubleValue(title, "initialize_positon", param.posToInit);
+        PutDoubleValue(title, "test_position", param.posToTest);
         
         free(title);
         title = NULL;
@@ -375,7 +284,7 @@ bool ReleaseSysResource() {
     ConfigLaserPortName(laserPortName);
     ConfigIlluminometerPortName(illuminometerPortName);
     ConfigAnglePortName(anglePortName);
-    return flag;
+
 }
 
 void SetEncoderUnit() {
@@ -431,53 +340,7 @@ char* GetProjectName(){
     return filename;
 }
 
-bool NearlyEqual(double value1, double value2)
-{
-    return fabs(value1 - value2) < 0.5;
-}
-
-bool SetAndCheckAxisParameters(MLAxis axis)
-{
-    int rtn = 0;
-    double checkStartSpeed = 0;
-    double checkRunSpeed = 0;
-    double checkStopSpeed = 0;
-    double checkAccTime = 0;
-    double checkDecTime = 0;
-    int retry = 0;
-    
-    AxisParam param = gAxisPrm[axis];
-    
-    Logger(MLLogInfo, "<%s>: Set axis {%d} parameters.\n", __func__, axis);
-    
-    rtn |= smc_set_profile_unit(gHandle, axis, param.startSpeed*param.ppratio, param.runSpeed*param.ppratio, param.accTime, param.accTime, param.stopSpeed*param.ppratio);
-    rtn |= smc_set_s_profile(gHandle, axis,0,0.1);
-
-    do {
-        if ((0 == smc_get_profile_unit(gHandle, axis, &checkStartSpeed, &checkRunSpeed, &checkAccTime, &checkDecTime, &checkStopSpeed)) || (0 != rtn)) {
-            if (!NearlyEqual(checkStartSpeed, param.startSpeed*param.ppratio)
-                || !NearlyEqual(checkRunSpeed, param.homeSpeed*param.ppratio)
-                || !NearlyEqual(checkAccTime, param.accTime)
-                || !NearlyEqual(checkStopSpeed, param.stopSpeed*param.ppratio)) {
-                    rtn |= smc_set_profile_unit(gHandle, axis, param.startSpeed*param.ppratio, param.runSpeed*param.ppratio, param.accTime, param.accTime, param.stopSpeed*param.ppratio);
-                    rtn |= smc_set_s_profile(gHandle, axis,0,0.1);
-                } else {
-                    break;
-                }
-        }
-    } while (retry++ < 3);
-    
-    if (retry >= 3 || rtn != 0) {
-        param.isRuning = false;
-        isNeedStop = true;
-        Logger(MLLogError, "<%s>: Fail to set axis {%d} parameters.\n", __func__, axis);
-        return false;
-    }
-    
-    return true;
-}
-
-bool InitializeSystem() {
+void InitializeSystem() {
     // free malloc objects.
     if (duts != NULL) { free(duts); duts = NULL; }
     if (rightCellPortName != NULL) { free(rightCellPortName); rightCellPortName = NULL; }
@@ -486,9 +349,6 @@ bool InitializeSystem() {
     if (illuminometerPortName != NULL) { free(illuminometerPortName); illuminometerPortName = NULL; }
     if (anglePortName != NULL) { free(anglePortName); anglePortName = NULL; }
 
-    Logger(MLLogInfo, "<%s>: Flare library version: {%s}.\n", __func__, GetLibraryVersion());
-    
-    bool flag = true;
     errmsg = (string)malloc(256);
     
     char filename[128];
@@ -506,67 +366,64 @@ bool InitializeSystem() {
     dutCount = dutTypeCnt;
     duts = (MLDUT *)malloc(MLMaxDUTTypeCount * sizeof(MLDUT) + 1);
     
-//    for (int cnt = 0; cnt < dutTypeCnt; cnt++) {
-//        char *title = (char *)malloc(32);
-////        sprintf(title, "%s", "DUTNAME");
-//        sprintf(title, "duttype_%d", cnt);
-//        char *name = (char *)malloc(64);
-//        memset(name, 0, 64);
-//        dutPrm.type = GetIntValue(title, "type");   if (dutPrm.type == INT_MIN) { PutIntValue(title, "type", 0); }
-//        GetStringValue(title, "name", name);
-//        dutPrm.name = name;                         if (0 == strcmp(dutPrm.name, "")) { PutStringValue(title, "name", ""); }
-//        dutPrm.posStandbyFront = GetDoubleValue(title, "front_standby_position");     if (dutPrm.posStandbyFront == LONG_MIN) { PutLongValue(title, "front_standby_position", 0); }
-//        dutPrm.posStandbyBack = GetDoubleValue(title, "back_standby_position");       if (dutPrm.posStandbyBack == LONG_MIN) { PutLongValue(title, "back_standby_position", 0); }
-//        dutPrm.posStandbyLeft = GetDoubleValue(title, "left_standby_position");       if (dutPrm.posStandbyLeft == LONG_MIN) { PutLongValue(title, "left_standby_position", 0); }
-//        dutPrm.posStandbyRight = GetDoubleValue(title, "right_standby_position");     if (dutPrm.posStandbyRight == LONG_MIN) { PutLongValue(title, "right_standby_position", 0); }
-//        dutPrm.posHoldFront = GetDoubleValue(title, "front_hold_position");   if (dutPrm.posHoldFront == LONG_MIN) { PutLongValue(title, "front_hold_position", 0); }
-//        dutPrm.posHoldBack = GetDoubleValue(title, "back_hold_position");     if (dutPrm.posHoldBack == LONG_MIN) { PutLongValue(title, "back_hold_position", 0); }
-//        dutPrm.posHoldLeft = GetDoubleValue(title, "left_hold_position");     if (dutPrm.posHoldLeft == LONG_MIN) { PutLongValue(title, "left_hold_position", 0); }
-//        dutPrm.posHoldRight = GetDoubleValue(title, "right_hold_position");   if (dutPrm.posHoldRight == LONG_MIN) { PutLongValue(title, "right_hold_position", 0); }
-//        dutPrm.posLifter = GetDoubleValue(title, "lifter_position");          if (dutPrm.posLifter == LONG_MIN) { PutLongValue(title, "lifter_position", 0); }
-//        dutPrm.posAxisX = GetDoubleValue(title, "axisX_position");            if (dutPrm.posAxisX == LONG_MIN) { PutLongValue(title, "axisX_position", 0); }
-//        dutPrm.posAxisY = GetDoubleValue(title, "axisY_position");            if (dutPrm.posAxisY == LONG_MIN) { PutLongValue(title, "axisY_position", 0); }
-//        dutPrm.posLifter = GetDoubleValue(title, "lifter_position");          if (dutPrm.posLifter == LONG_MIN) { PutLongValue(title, "lifter_position", 0); }
-//        duts[cnt] = dutPrm;
-//    }
+    for (int cnt = 0; cnt < dutTypeCnt; cnt++) {
+        char *title = (char *)malloc(32);
+//        sprintf(title, "%s", "DUTNAME");
+        sprintf(title, "duttype_%d", cnt);
+        char *name = (char *)malloc(64);
+        memset(name, 0, 64);
+        dutPrm.type = GetIntValue(title, "type");   if (dutPrm.type == INT_MIN) { PutIntValue(title, "type", 0); }
+        GetStringValue(title, "name", name);
+        dutPrm.name = name;                         if (0 == strcmp(dutPrm.name, "")) { PutStringValue(title, "name", ""); }
+        dutPrm.posStandbyFront = GetDoubleValue(title, "front_standby_position");     if (dutPrm.posStandbyFront == LONG_MIN) { PutLongValue(title, "front_standby_position", 0); }
+        dutPrm.posStandbyBack = GetDoubleValue(title, "back_standby_position");       if (dutPrm.posStandbyBack == LONG_MIN) { PutLongValue(title, "back_standby_position", 0); }
+        dutPrm.posStandbyLeft = GetDoubleValue(title, "left_standby_position");       if (dutPrm.posStandbyLeft == LONG_MIN) { PutLongValue(title, "left_standby_position", 0); }
+        dutPrm.posStandbyRight = GetDoubleValue(title, "right_standby_position");     if (dutPrm.posStandbyRight == LONG_MIN) { PutLongValue(title, "right_standby_position", 0); }
+        dutPrm.posHoldFront = GetDoubleValue(title, "front_hold_position");   if (dutPrm.posHoldFront == LONG_MIN) { PutLongValue(title, "front_hold_position", 0); }
+        dutPrm.posHoldBack = GetDoubleValue(title, "back_hold_position");     if (dutPrm.posHoldBack == LONG_MIN) { PutLongValue(title, "back_hold_position", 0); }
+        dutPrm.posHoldLeft = GetDoubleValue(title, "left_hold_position");     if (dutPrm.posHoldLeft == LONG_MIN) { PutLongValue(title, "left_hold_position", 0); }
+        dutPrm.posHoldRight = GetDoubleValue(title, "right_hold_position");   if (dutPrm.posHoldRight == LONG_MIN) { PutLongValue(title, "right_hold_position", 0); }
+        dutPrm.posLifter = GetDoubleValue(title, "lifter_position");          if (dutPrm.posLifter == LONG_MIN) { PutLongValue(title, "lifter_position", 0); }
+        dutPrm.posAxisX = GetDoubleValue(title, "axisX_position");          if (dutPrm.posAxisX == LONG_MIN) { PutLongValue(title, "axisX_position", 0); }
+        dutPrm.posAxisY = GetDoubleValue(title, "axisY_position");          if (dutPrm.posAxisY == LONG_MIN) { PutLongValue(title, "axisY_position", 0); }
+        dutPrm.posLifter = GetDoubleValue(title, "lifter_position");          if (dutPrm.posLifter == LONG_MIN) { PutLongValue(title, "lifter_position", 0); }
+        duts[cnt] = dutPrm;
+    }
     
     for (int axis = 0; axis < MLMaxAxisCount; axis++) {
         char *title = (char *)malloc(32);
         sprintf(title, "axis_%d", axis);
-        double startSpeed = GetDoubleValue(title, "start_speed");           if (LONG_MIN == startSpeed) { Logger(MLLogError, "%s\n", GetConfigFileErrorMessage()); flag = false; }
-        double runSpeed =   GetDoubleValue(title, "run_speed");             if (LONG_MIN == runSpeed) { Logger(MLLogError, "%s\n", GetConfigFileErrorMessage()); flag = false; }
-        double stopSpeed =  GetDoubleValue(title, "stop_speed");            if (LONG_MIN == stopSpeed) { Logger(MLLogError, "%s\n", GetConfigFileErrorMessage()); flag = false; }
-        double homeSpeed =  GetDoubleValue(title, "home_speed");            if (LONG_MIN == homeSpeed) { Logger(MLLogError, "%s\n", GetConfigFileErrorMessage()); flag = false; }
-        double accTime =    GetDoubleValue(title, "acc_time");              if (LONG_MIN == accTime) { Logger(MLLogError, "%s\n", GetConfigFileErrorMessage()); flag = false; }
-        int homeDirect =    GetIntValue(title, "home_dir");                 if (INT_MIN == homeDirect) { Logger(MLLogError, "%s\n", GetConfigFileErrorMessage()); flag = false;}
-        int homeLevel =     GetIntValue(title, "home_level");               if (INT_MIN == homeLevel) { Logger(MLLogError, "%s\n", GetConfigFileErrorMessage()); flag = false; }
-        double ppratio =    GetDoubleValue(title, "pp_ratio");              if (LONG_MIN == ppratio) { Logger(MLLogError, "%s\n", GetConfigFileErrorMessage()); flag = false; }
-        double posInit =    GetDoubleValue(title, "initialize_positon");    if (LONG_MIN == posInit) { Logger(MLLogError, "%s\n", GetConfigFileErrorMessage()); flag = false; }
-        double posTest =    GetDoubleValue(title, "test_position");         if (LONG_MIN == posTest) { Logger(MLLogError, "%s\n", GetConfigFileErrorMessage()); flag = false; }
+        double startSpeed = GetDoubleValue(title, "start_speed");
+        double runSpeed =   GetDoubleValue(title, "run_speed");
+        double stopSpeed =  GetDoubleValue(title, "stop_speed");
+        double homeSpeed =  GetDoubleValue(title, "home_speed");
+        double accTime =    GetDoubleValue(title, "acc_time");
+        int homeDirect =    GetIntValue(title, "home_dir");
+        int homeLevel =     GetIntValue(title, "home_level");
+        double ppratio =    GetDoubleValue(title, "pp_ratio");
+        double posInit =      GetDoubleValue(title, "initialize_positon");
+        double posTest =      GetDoubleValue(title, "test_position");
         
         AxisParam param;
         param.axis = axis;
         param.isRuning = false;
-        param.startSpeed =  (LONG_MIN != startSpeed) ? startSpeed : startSpeedDef[axis];        if (LONG_MIN == startSpeed) { PutDoubleValue(title, "start_speed", startSpeedDef[axis]); }
-        param.runSpeed =    (LONG_MIN != runSpeed) ? runSpeed : runSpeedDef[axis];              if (LONG_MIN == runSpeed) { PutDoubleValue(title, "run_speed", runSpeedDef[axis]); }
-        param.stopSpeed =   (LONG_MIN != stopSpeed) ? stopSpeed : stopSpeedDef[axis];           if (LONG_MIN == stopSpeed) { PutDoubleValue(title, "stop_speed", stopSpeedDef[axis]); }
-        param.homeSpeed =   (LONG_MIN != homeSpeed) ? homeSpeed : homeSpeedDef[axis];           if (LONG_MIN == homeSpeed) { PutDoubleValue(title, "home_speed", homeSpeedDef[axis]); }
-        param.accTime =     (LONG_MIN != accTime) ? accTime : accTImeDef[axis];                 if (LONG_MIN == accTime) { PutDoubleValue(title, "acc_time", accTImeDef[axis]); }
-        param.homeDirect =  (INT_MIN != homeDirect) ? homeDirect : homeDirDef;                  if (INT_MIN == homeDirect) { PutDoubleValue(title, "home_dir", homeDirDef); }
-        param.homeLevel =   (MLLevel)((INT_MIN != homeLevel) ? homeLevel : homeLevelDef);       if (INT_MIN == homeLevel) { PutDoubleValue(title, "home_level", homeLevelDef); }
+        param.startSpeed =  (LONG_MIN != startSpeed) ? startSpeed : 1;        if (LONG_MIN == startSpeed) { PutDoubleValue(title, "start_speed", 1); }
+        param.runSpeed =    (LONG_MIN != runSpeed) ? runSpeed : 1;            if (LONG_MIN == runSpeed) { PutDoubleValue(title, "run_speed", 1); }
+        param.stopSpeed =   (LONG_MIN != stopSpeed) ? stopSpeed : 1;          if (LONG_MIN == stopSpeed) { PutDoubleValue(title, "stop_speed", 1); }
+        param.homeSpeed =   (LONG_MIN != homeSpeed) ? homeSpeed : 1;          if (LONG_MIN == homeSpeed) { PutDoubleValue(title, "home_speed", 1); }
+        param.accTime =     (LONG_MIN != accTime) ? accTime : 0.2;              if (LONG_MIN == accTime) { PutDoubleValue(title, "acc_time", 0.2); }
+        param.homeDirect =  (INT_MIN != homeDirect) ? homeDirect : 0;           if (INT_MIN == homeDirect) { PutDoubleValue(title, "home_dir", 0); }
+        param.homeLevel =   (MLLevel)((INT_MIN != homeLevel) ? homeLevel : 0);  if (INT_MIN == homeLevel) { PutDoubleValue(title, "home_level", 0); }
         param.equiv = 1;
         param.backlash = 1;
-        param.ppratio =     (LONG_MIN != ppratio) ? ppratio : ppRatioDef[axis];                 if (ppratio < 0) { PutDoubleValue(title, "pp_ratio", ppRatioDef[axis]); }
-        param.posToInit =   (LONG_MIN != posInit) ? posInit : 0;                                if (LONG_MIN == posInit) { PutDoubleValue(title, "initialize_positon", 0); }
-        param.posToTest =   (LONG_MIN != posTest) ? posTest : 0;                                if (LONG_MIN == posTest) { PutDoubleValue(title, "test_position", 0); }
+        param.ppratio =     ppratio < 0 ? 0 : ppratio;                          if (ppratio < 0) { PutDoubleValue(title, "pp_ratio", 0); }
+        param.posToInit =   (LONG_MIN != posInit) ? posInit : 0;                if (LONG_MIN == posInit) { PutDoubleValue(title, "initialize_positon", 0); }
+        param.posToTest =   (LONG_MIN != posTest) ? posTest : 0;                if (LONG_MIN == posTest) { PutDoubleValue(title, "test_position", 0); }
         gAxisPrm[axis] = param;
         
         free(title);
         title = NULL;
     }
-    
-    int count;
-    const char **device_names = (const char**)ListUSBDeviceNames(&count);
     
     // loadcell port name.
     leftCellPortName = (string)malloc(128);
@@ -576,91 +433,44 @@ bool InitializeSystem() {
     
     if (!GetStringValue("loadcell", "left_side_portname", leftCellPortName)) {
         Logger(MLLogError, "{left side}, No loadcell port has configed.\n");
-        InsertStringValue("loadcell", NULL, "left_side_portname", "/dev/cu.usbserial-ClampLeft");
-        flag = false;
-    } else {
-        if (CheckDeviceName(device_names, count, leftCellPortName)) {
-            Logger(MLLogError, "{left side}, Not find port name '%s' on computer.\n", leftCellPortName);
-            flag = false;
-        }
-//        if (strlen(leftCellPortName) <= 4) { flag = false; }
+        InsertStringValue("loadcell", NULL, "left_side_portname", "/dev");
     }
     
     if (!GetStringValue("loadcell", "right_side_portname", rightCellPortName)) {
         Logger(MLLogError, "{right side}, No loadcell port has configed.\n");
-        InsertStringValue("loadcell", NULL, "right_side_portname", "/dev/cu.usbserial-ClampRight");
-        flag = false;
-    } else {
-        if (CheckDeviceName(device_names, count, rightCellPortName)) {
-            Logger(MLLogError, "{right side}, Not find port name '%s' on computer.\n", leftCellPortName);
-            flag = false;
-        }
-//        if (strlen(rightCellPortName) <= 4) { flag = false; }
+        InsertStringValue("loadcell", NULL, "right_side_portname", "/dev");
     }
     
     if (!GetStringValue("loadcell", "front_side_portname", frontCellPortName)) {
         Logger(MLLogError, "{front side}, No loadcell port has configed.\n");
-        InsertStringValue("loadcell", NULL, "front_side_portname", "/dev/cu.usbserial-ClampFront");
-        flag = false;
-    } else {
-        if (CheckDeviceName(device_names, count, frontCellPortName)) {
-            Logger(MLLogError, "{front side}, Not find port name '%s' on computer.\n", leftCellPortName);
-            flag = false;
-        }
-//        if (strlen(frontCellPortName) <= 4) { flag = false; }
+        InsertStringValue("loadcell", NULL, "front_side_portname", "/dev");
     }
     
     if (!GetStringValue("loadcell", "back_side_portname", backCellPortName)) {
         Logger(MLLogError, "{back side}, No loadcell port has configed.\n");
-        InsertStringValue("loadcell", NULL, "back_side_portname", "/dev/cu.usbserial-ClampBack");
-        flag = false;
-    } else {
-        if (CheckDeviceName(device_names, count, backCellPortName)) {
-            Logger(MLLogError, "{back side}, Not find port name '%s' on computer.\n", leftCellPortName);
-            flag = false;
-        }
-//        if (strlen(backCellPortName) <= 4) { flag = false; }
+        InsertStringValue("loadcell", NULL, "back_side_portname", "/dev");
     }
     
     laserPortName = (string)malloc(128);
     
     if (!GetStringValue("laser", "portname", laserPortName)) {
         Logger(MLLogError, "No laser port has configed.\n");
-        InsertStringValue("laser", NULL, "portname", "/dev/cu.usbserial-Laser");
-        flag = false;
-    } else {
-        if (CheckDeviceName(device_names, count, laserPortName)) {
-            Logger(MLLogError, "{laser}, Not find port name '%s' on computer.\n", leftCellPortName);
-            flag = false;
-        }
-//        if (strlen(laserPortName) <= 4) { flag = false; }
+        InsertStringValue("laser", NULL, "portname", "/dev");
     }
     
     illuminometerPortName = (string)malloc(128);
     
     if (!GetStringValue("illumionmeter", "portname", illuminometerPortName)) {
         Logger(MLLogError, "No illumionmeter port has configed.\n");
-        InsertStringValue("illumionmeter", NULL, "portname", "/dev/cu.usbserial-AL014DYP");
-        flag = false;
-    } else {
-        if (strlen(illuminometerPortName) <= 4) { flag = false; }
+        InsertStringValue("illumionmeter", NULL, "portname", "/dev");
     }
     
     anglePortName = (string)malloc(128);
     
     if (!GetStringValue("angle", "portname", anglePortName)) {
         Logger(MLLogError, "No angle port has configed.\n");
-        InsertStringValue("angle", NULL, "portname", "/dev/cu.usbserial-Angle");
-        flag = false;
-    } else {
-        if (CheckDeviceName(device_names, count, anglePortName)) {
-            Logger(MLLogError, "{angle}, Not find port name '%s' on computer.\n", leftCellPortName);
-            flag = false;
-        }
-//        if (strlen(anglePortName) <= 4) { flag = false; }
+        InsertStringValue("angle", NULL, "portname", "/dev");
     }
-    hasInitialzed = true;
-    return flag;
 }
 
 // 判断输入的字符串是否是正确的IP，但不能过滤掉192.168.1..33这种情况
@@ -698,36 +508,6 @@ bool IsValidIP(char *ip) {
     }
     
     return flag;
-}
-
-bool CheckLimitSensor(int axis)
-{
-    ASSERT_REPORT(axis >= 0);
-    bool flag = true;
-    
-    if (gHandle != -1) {
-        DWORD state = smc_axis_io_status(gHandle, axis);
-        
-        if ((state & 0x06) == 0x06) {
-            flag = false;
-        }
-    }
-    
-    return flag;
-}
-
-int CheckAllLimitSensor() {
-    int errorAxis = 1;
-    
-    for (int axis = 1; axis < 13; axis++) {
-        if (!CheckLimitSensor(axis)) {
-            errorAxis = -axis;
-            break;
-        }
-    }
-    Logger(MLLogInfo, "<%s>: Check limit sensor status.\n", __func__);
-    
-    return errorAxis;
 }
 
 /*
@@ -808,12 +588,6 @@ bool SetAxisParam(int axis, AxisParam param) {
 }
 
 void PowerOn() {
-    int errorAxis = CheckAllLimitSensor();
-    
-    if (errorAxis < 0) {
-        Logger(MLLogError, "<%s>: Limit sensor has broken at axis %d\n", __func__, abs(errorAxis));
-    }
-    
     Logger(MLLogInfo, "<%s>: Power ON system.\n", __func__);
     isNeedStop = false;
     isNeedEmgStop = false;
@@ -932,7 +706,6 @@ void ResetSystem(void) {
 
 void Disconnect(void) {
     if (gHandle != -1) {
-        Logger(MLLogInfo, "<%s>: Disconnect controller.\n", __func__);
         gStopped = true;
         AllAxisStop();                      // stop all axis before disconnect controller.
         usleep(250000);
@@ -988,8 +761,9 @@ void TMoveAxisToPosition(void *args) {
         rtn |= smc_set_pulse_outmode(gHandle, axis, MLPluseOutMode);
         rtn |= smc_set_equiv(gHandle, axis, param.equiv);
         rtn |= smc_set_backlash_unit(gHandle, axis, param.backlash);
+        rtn |= smc_set_profile_unit(gHandle, axis, param.startSpeed*param.ppratio, param.runSpeed*param.ppratio, param.accTime, param.accTime, param.stopSpeed);
         
-        if (rtn == 0 && SetAndCheckAxisParameters(axis)) {
+        if (rtn == 0) {
             res=smc_get_encoder_unit(MyCardNo,axis,&Myencoder_value);//读编码值
             currentPos = Myencoder_value;
             Logger(MLLogInfo, "<%s>: Axis %d, [Before_Position]: %ld\n", __func__, axis, currentPos);
@@ -1016,8 +790,6 @@ void TMoveAxisToPosition(void *args) {
                 memset(errmsg, 0, 256);
                 sprintf(errmsg, "Fail to move axis{%d} using MoveAxisToPosition, rtn: {%d}.\n", axis, rtn);
             }
-        } else {
-            Logger(MLLogError, "<%s>: Fail to move axis{%d} using MoveAxisToPosition.\n", __func__, axis);
         }
     }
     gIsTesting = false;
@@ -1052,8 +824,9 @@ long MoveAxisToPosition(int axis, double position, bool blocked, bool pthread) {
             rtn |= smc_set_pulse_outmode(gHandle, axis, MLPluseOutMode);
             rtn |= smc_set_equiv(gHandle, axis, param.equiv);
             rtn |= smc_set_backlash_unit(gHandle, axis, param.backlash);
+            rtn |= smc_set_profile_unit(gHandle, axis, param.startSpeed*param.ppratio, param.runSpeed*param.ppratio, param.accTime, param.accTime, param.stopSpeed);
 
-            if (rtn == 0 && SetAndCheckAxisParameters(axis)) {
+            if (rtn == 0) {
                 res=smc_get_encoder_unit(MyCardNo,axis,&Myencoder_value);//读编码值
                 currentPos = Myencoder_value;
                 Logger(MLLogInfo, "<%s>: Axis %d, [Before_Position]: %ld\n", __func__, axis, currentPos);
@@ -1083,8 +856,6 @@ long MoveAxisToPosition(int axis, double position, bool blocked, bool pthread) {
                     memset(errmsg, 0, 256);
                     sprintf(errmsg, "Fail to move axis{%d} using MoveAxisToPosition, rtn: {%d}.\n", axis, rtn);
                 }
-            } else {
-                 Logger(MLLogError, "<%s>: Fail to move axis{%d} using MoveAxisToPosition.\n", __func__, axis);
             }
         }
         gIsTesting = false;
@@ -1128,10 +899,9 @@ void TMoveAxisDistance(void *args) {
         rtn |= smc_set_pulse_outmode(gHandle, axis, MLPluseOutMode);
         rtn |= smc_set_equiv(gHandle, axis, param.equiv);
         rtn |= smc_set_backlash_unit(gHandle, axis, param.backlash);
+        rtn |= smc_set_profile_unit(gHandle, axis, param.startSpeed*param.ppratio, param.runSpeed*param.ppratio, param.accTime, param.accTime, param.stopSpeed);
         
-        bool bSuccess = SetAndCheckAxisParameters(axis);
-        
-        if (rtn==0 && bSuccess) {
+        if (rtn==0) {
             res=smc_get_encoder_unit(MyCardNo,axis,&Myencoder_value);//读编码值
             
             currentPos = Myencoder_value;
@@ -1163,8 +933,6 @@ void TMoveAxisDistance(void *args) {
                 memset(errmsg, 0, 256);
                 sprintf(errmsg, "Fail to move axis{%d} using MoveAxisToPosition, rtn: {%d}.\n", axis, rtn);
             }
-        } else {
-            Logger(MLLogError, "<%s>: Fail to move axis{%d} using MoveAxisToDistance.\n", __func__, axis);
         }
     }
     gIsTesting = false;
@@ -1203,10 +971,9 @@ bool MoveAxisDistance(int axis, double distance, bool blocked, bool pthread) {
             rtn |= smc_set_pulse_outmode(gHandle, axis, MLPluseOutMode);
             rtn |= smc_set_equiv(gHandle, axis, param.equiv);
             rtn |= smc_set_backlash_unit(gHandle, axis, param.backlash);
+            rtn |= smc_set_profile_unit(gHandle, axis, param.startSpeed*param.ppratio, param.runSpeed*param.ppratio, param.accTime, param.accTime, param.stopSpeed);
             
-            bool bSuccess = SetAndCheckAxisParameters(axis);
-            
-            if (rtn==0 && bSuccess) {
+            if (rtn==0) {
                 res=smc_get_encoder_unit(MyCardNo,axis,&Myencoder_value);//读编码值
 
                 currentPos = Myencoder_value;
@@ -1240,8 +1007,6 @@ bool MoveAxisDistance(int axis, double distance, bool blocked, bool pthread) {
                     memset(errmsg, 0, 256);
                     sprintf(errmsg, "Fail to move axis{%d} using MoveAxisToDistance, rtn: {%d}.\n", axis, rtn);
                 }
-            } else {
-                Logger(MLLogError, "<%s>: Fail to move axis{%d} using MoveAxisToDistance.\n", __func__, axis);
             }
         }
         gIsTesting = false;
@@ -1267,8 +1032,9 @@ long MoveAxisDistanceQuick(int axis, double distance, bool blocked) {
         rtn |= smc_set_pulse_outmode(gHandle, axis, MLPluseOutMode);
         rtn |= smc_set_equiv(gHandle, axis, param.equiv);
         rtn |= smc_set_backlash_unit(gHandle, axis, param.backlash);
+        rtn |= smc_set_profile_unit(gHandle, axis, 8000, 15000, param.accTime, param.accTime, 5000);
         
-        if (rtn==0 && SetAndCheckAxisParameters(axis)) {
+        if (rtn==0) {
             res=smc_get_encoder_unit(MyCardNo,axis,&Myencoder_value);//读编码值
             currentPos = Myencoder_value;
             validPos += currentPos;
@@ -1293,8 +1059,6 @@ long MoveAxisDistanceQuick(int axis, double distance, bool blocked) {
                 memset(errmsg, 0, 256);
                 sprintf(errmsg, "Fail to move axis{%d} using MoveAxisToDistance, rtn: {%d}.\n", axis, rtn);
             }
-        } else {
-            Logger(MLLogError, "<%s>: Fail to move axis{%d} using MoveAxisToDistanceQuick.\n", __func__, axis);
         }
     }
     gIsTesting = false;
@@ -1335,11 +1099,9 @@ void TJMoveAxis(void *args) {
         }
         
         sleep(1);
-        bool bSuccess = SetAndCheckAxisParameters(axis);
-        
-        if (bSuccess && rtn == 0) {
-            rtn |= smc_vmove(gHandle, axis, direction);
-        }
+        rtn |= smc_set_profile_unit(gHandle, axis, param.startSpeed*param.ppratio, param.runSpeed*param.ppratio, param.accTime, param.accTime, param.stopSpeed);
+        rtn |= smc_set_s_profile(gHandle, axis,0,0);
+        rtn |= smc_vmove(gHandle, axis, direction);
         
         if (rtn != 0) {
             Logger(MLLogError, "<%s>: Axis %d fail to move axis using JMove, rtn: {%d}.\n", __func__, axis, rtn);
@@ -1391,10 +1153,9 @@ void JMoveAxis(int axis, int direction, bool pthread) {
             }
             
             sleep(1);
-            
-            if (SetAndCheckAxisParameters(axis)) {
-                rtn |= smc_vmove(gHandle, axis, direction);
-            }
+            rtn |= smc_set_profile_unit(gHandle, axis, param.startSpeed*param.ppratio, param.runSpeed*param.ppratio, param.accTime, param.accTime, param.stopSpeed);
+            rtn |= smc_set_s_profile(gHandle, axis,0,0);
+            rtn |= smc_vmove(gHandle, axis, direction);
             
             if (rtn != 0) {
                 Logger(MLLogError, "<%s>: Axis %d fail to move axis using JMove, rtn: {%d}.\n", __func__, axis, rtn);
@@ -1440,9 +1201,9 @@ void JHoldMoveAxis(int axis, int direction) {
         }
         
         sleep(1);
-        if (SetAndCheckAxisParameters(axis)) {
-            rtn |= smc_vmove(gHandle, axis, direction);
-        }
+        rtn |= smc_set_profile_unit(gHandle, axis,5000, 5000, param.accTime, param.accTime, param.stopSpeed);
+        rtn |= smc_set_s_profile(gHandle, axis,0,0);
+        rtn |= smc_vmove(gHandle, axis, direction);
         
         if (rtn != 0) {
             Logger(MLLogError, "Axis{%d}, Fail to move axis using JMove, rtn: {%d}.\n", axis, rtn);
@@ -1492,7 +1253,7 @@ void JMoveAxisWithBlock(int axis, int direction, bool pthread) {
     if (axisPrm.isRuning) { return; }
     if (isNeedStop) {return;}
     if (isNeedEmgStop) {return;}
-    Logger(MLLogInfo, "<%s>: Axis %d call `JMoveAxisWithBlock`\n", __func__, axis);
+    Logger(MLLogInfo, "<%s>: axis %d call `JMoveAxisWithBlock`\n", __func__, axis);
     
     if (pthread) {
         TArgs *args = (TArgs *)malloc(sizeof(TArgs));
@@ -1661,33 +1422,6 @@ void AxisGoHome(int axis, bool blocked) {
 
         rtn |= smc_set_home_profile_unit(gHandle, axis, param.startSpeed*param.ppratio, param.homeSpeed*param.ppratio, param.accTime, 0);
         rtn |= smc_set_home_pin_logic(gHandle, axis, param.homeLevel, 0);
-        
-        int ret = 0;
-        double checkStartSpeed = 0;
-        double checkRunSpeed = 0;
-        double checkAccTime = 0;
-        double checkDecTime = 0;
-        int retry = 0;
-        
-        do {
-            if (0 == (ret = smc_get_home_profile_unit(gHandle, axis, &checkStartSpeed, &checkRunSpeed, &checkAccTime, &checkDecTime))) {
-                if (!NearlyEqual(checkStartSpeed, param.startSpeed*param.ppratio)
-                    || !NearlyEqual(checkRunSpeed, param.homeSpeed*param.ppratio
-                    || !NearlyEqual(checkAccTime, param.accTime))) {
-                        rtn |= smc_set_home_profile_unit(gHandle, axis, param.startSpeed*param.ppratio, param.homeSpeed*param.ppratio, param.accTime, 0);
-                        rtn |= smc_set_home_pin_logic(gHandle, axis, param.homeLevel, 0);
-                }
-            } else {
-                break;
-            }
-        } while (retry++ < 3);
-        
-        if (retry >= 3 || rtn != 0) {
-            param.isRuning = false;
-            isNeedStop = true;
-            Logger(MLLogError, "<%s>: Fail to set axis parameters.\n");
-            return;
-        }
         
         if (rtn==0) {
             rtn |= smc_write_sevon_pin(gHandle, axis, 0);
@@ -2356,74 +2090,6 @@ void SetAxisRatio(int axis, double ratio) {
     gAxisPrm[axis] = prm;
 }
 
-static bool SetOutputBitState(MLOutSensor outbit, MLLevel level)
-{
-    bool flag = false;
-    unsigned int reverseLevel = abs((int)(level - 1));
-    
-    if (gHandle != -1) {
-        switch (outbit) {
-            case MLOutCylinderHome:
-                if (0 == smc_write_outbit(gHandle, outbit, level) && 0 == smc_write_outbit(gHandle, MLOutCylinderShop, reverseLevel)) {
-                    int time = 0;
-                    
-                    do {
-                        if (level == MLLow) {
-                            if (lightTestReadyed) {
-                                flag = true;
-                                break;
-                            }
-                        } else {
-                            if (!lightTestReadyed) {
-                                flag = true;
-                                break;
-                            }
-                        }
-                        
-                        usleep(500000);
-                        time += 500;
-                    } while (time < 8000);
-                }
-                break;
-            case MLOutCylinderShop:
-                if (0 == smc_write_outbit(gHandle, outbit, level)  && 0 == smc_write_outbit(gHandle, MLOutCylinderHome, reverseLevel)) {
-                    int time = 0;
-                    
-                    do {
-                        if (level == MLLow) {
-                            if (lightTestReadyed) {
-                                flag = true;
-                                break;
-                            }
-                        } else {
-                            if (!lightTestReadyed) {
-                                flag = true;
-                                break;
-                            }
-                        }
-                        
-                        usleep(500000);
-                        time += 500;
-                    } while (time < 8000);
-                }
-                break;
-            case MLOutLeftDoorOpen:
-            case MLOutLeftDoorClose:
-            case MLOutRightDoorOpen:
-            case MLOutRightDoorClose:
-                break;
-                
-            default:
-                if (0 == smc_write_outbit(gHandle, outbit, level)) {
-                    flag = true;
-                }
-                break;
-        }
-    }
-    
-    return flag;
-}
-
 void SetBitState(int bit, MLLevel level) {
     if (gHandle != -1) {
         smc_write_outbit(gHandle, bit, level);
@@ -2582,7 +2248,7 @@ void CheckInputSignal() {
     pthread_create(&thrd, NULL, (void *)CheckSensor, NULL);
 }
 
-bool DoorOpen() {
+void DoorOpen() {
     if (gHandle != -1) {
         doorOpened = false;
         smc_write_outbit(gHandle, MLOutLeftDoorOpen, MLLow);
@@ -2594,18 +2260,15 @@ bool DoorOpen() {
         smc_write_outbit(gHandle, MLOutLeftDoorOpen, MLHigh);
         smc_write_outbit(gHandle, MLOutLight, MLLow);      // 打开日光灯
         
-        if (!doorOpened) {
+        if (time >= 7000) {
             Logger(MLLogError, "<%s>: Undetected auto-door status signal after OPEN the door\n", __func__);
-            return false;
         }
         
         Logger(MLLogInfo, "<%s>: Auto door has opened\n", __func__);
-        return true;
     }
-    return false;
 }
 
-bool DoorClose() {
+void DoorClose() {
     if (gHandle != -1) {
 //        doorOpened = false;
         doorClosing = true;
@@ -2621,15 +2284,12 @@ bool DoorClose() {
         while (doorOpened && time < 7000) { time += 500; usleep(500000); }
         smc_write_outbit(gHandle, MLOutLeftDoorClose, MLHigh);
         
-        if (doorOpened) {
+        if (time >= 7000) {
             Logger(MLLogError, "<%s>: Undetected auto-door status signal after CLOSE the door\n", __func__);
-            return false;
         }
         
         Logger(MLLogInfo, "<%s>: Auto door has closed\n", __func__);
-        return true;
     }
-    return false;
 }
 
 // union API
@@ -3813,8 +3473,9 @@ bool MoveAxisDistanceAbsolute(int axis, double distance, bool blocked) {
         rtn |= smc_set_pulse_outmode(gHandle, axis, MLPluseOutMode);
         rtn |= smc_set_equiv(gHandle, axis, param.equiv);
         rtn |= smc_set_backlash_unit(gHandle, axis, param.backlash);
+        rtn |= smc_set_profile_unit(gHandle, axis, param.startSpeed*param.ppratio, param.runSpeed*param.ppratio, param.accTime, param.accTime, param.stopSpeed);
         
-        if (rtn==0 && SetAndCheckAxisParameters(axis)) {
+        if (rtn==0) {
             res=smc_get_encoder_unit(MyCardNo,axis,&Myencoder_value);//读编码值
             currentPos = Myencoder_value;
             validPos += currentPos;
@@ -4331,29 +3992,14 @@ double GetLuxmeter(string portName) {
         smc_write_outbit(gHandle, MLOutLaserPower, MLHigh);
         smc_write_outbit(gHandle, MLOutSpotPower, MLHigh);
         
-        // To avoid a collision
         int iostate = CheckAxisIOState(MLAxisLight);
         Logger(MLLogInfo, "<%s>: Axis %d state is %d.\n", __func__, MLAxisLight, iostate);
         
         if (iostate != 2 && iostate != 0) {
             JMoveAxisWithBlock(MLAxisLight, 0, false);
         }
+//        JMoveAxisWithBlock(MLAxisLaser, 0);
         
-        iostate = CheckAxisIOState(MLAxisLight);
-        
-        if (iostate != 2) {
-            Logger(MLLogError, "<%s>: Fail to move axis {%d} to negative limit.\n", __func__, MLAxisLight);
-            return measValue;
-        }
-        
-        JMoveAxisWithBlock(MLAxisLaser, 0, false);
-        
-        if (CheckAxisIOState(MLAxisLaser) != 2) {
-            Logger(MLLogError, "<%s>: Fail to move axis {%d} to negative limit.\n", __func__, MLAxisLaser);
-            return measValue;
-        }
-        
-        // Close auto-door
         DoorClose();
         if (doorOpened) {
             Logger(MLLogError, "<%s>: Fail to close auto-door.\n", __func__);
@@ -4362,13 +4008,8 @@ double GetLuxmeter(string portName) {
         
         if (!bCalibrated) {
             calLuxVals = (MLLuxMeterVal *)malloc(sizeof(MLLuxMeterVal));
-//            SetBitState(MLOutCylinderHome, MLLow);
-//            while (lightTestReadyed) { usleep(500000); }       // check state every 500ms.
-            
-            if (!SetOutputBitState(MLOutCylinderHome, MLLow)) {
-                Logger(MLLogError, "<%s>: Fail to move luxmeter to init poistion.\n", __func__);
-                return measValue;
-            }
+            SetBitState(MLOutCylinderHome, MLLow);
+            while (lightTestReadyed) { usleep(500000); }       // check state every 500ms.
             calLuxVals->lv = GetIlluminanceValue(5000);
             measValue = calLuxVals->lv;
             Logger(MLLogInfo, "<%s>: Get Illuminometer Calibrate value = %lf.\n", __func__, calLuxVals->lv);
@@ -4384,12 +4025,7 @@ double GetLuxmeter(string portName) {
             SetBitState(MLOutCylinderShop, MLLow);
         }
         
-//        while (!lightTestReadyed) { usleep(500000); }       // check state every 500ms.
-        
-        if (!SetOutputBitState(MLOutCylinderShop, MLLow)) {
-            Logger(MLLogError, "<%s>: Fail to move luxmeter to test poistion.\n", __func__);
-            return measValue;
-        }
+        while (!lightTestReadyed) { usleep(500000); }       // check state every 500ms.
         
         gIsTesting = false;
     } else {

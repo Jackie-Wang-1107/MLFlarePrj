@@ -12,10 +12,8 @@
 #include <limits.h>
 #include <assert.h>
 #include <unistd.h>
-#include <errno.h>
 
 static char *gFilename = NULL;
-int hasErrorCode = 0;
 
 void SetIniFileName(char *filename) {
     if (gFilename != NULL) {
@@ -48,7 +46,6 @@ bool GetStringValue(char *title, char *key, char *buffer) {
     
     if (NULL == (fp = fopen(gFilename, "r"))) {
         perror("fail to open config file.");
-        hasErrorCode = 1;
         return false;
     }
     
@@ -77,7 +74,6 @@ bool GetStringValue(char *title, char *key, char *buffer) {
     }
     fclose(fp);
     
-    hasErrorCode = 2;
     return false;
 }
 
@@ -215,14 +211,12 @@ bool InsertStringValue(char *title, char *searchKey, char *key, char *value) {
     sprintf(sTitle, "[%s]", title);
     
     if (NULL == (fpr=fopen(gFilename, "r"))) {
-        hasErrorCode = 1;
         return false;
     }
     
     sprintf(sLine, "%s.tmp", gFilename);
     
     if (NULL == (fpw=fopen(sLine, "w+"))) {
-        hasErrorCode = 1;
         return false;
     }
     
@@ -294,20 +288,5 @@ bool InsertStringValue(char *title, char *searchKey, char *key, char *value) {
     sprintf(sLine, "%s.tmp", gFilename);
     
     int yesno = rename(sLine, gFilename);    // 将临时文件更新到原文件
-    hasErrorCode = (yesno == 0) ? 0 : 2;
     return (yesno == 0) ? true : false;
-}
-
-char *GetConfigFileErrorMessage() {
-    if (hasErrorCode == 2) {
-        hasErrorCode = 0;
-        return "Empty profile file";
-    }
-    else if (hasErrorCode == 1) {
-        hasErrorCode = 0;
-        return strerror(errno);
-    } else {
-        hasErrorCode = 0;
-        return "";
-    }
 }

@@ -200,8 +200,6 @@ typedef struct {
 
 typedef void (* func)(double val1, double val2);
 
-char* GetLibraryVersion(void);
-
 /**
  *@ingroup MLFlare
  *@brief Connect Leisai motion controller.
@@ -374,34 +372,29 @@ void ConfigAnglePortName(string portName);
 double GetAngleValue(string portName,char*bufx,char*bufy,char*buft);
 double GetAngleDoubleValue(string portName, double *anglex, double *angley, double *tem);
 
-// check limit sensor state, if return value is less than 0, some axis's limit is broken.
-int CheckAllLimitSensor(void);
-
 // ================= Union API =====================
 /**
  *@ingroup MLFlare
  *@brief Initial system, load config parameters.
  *@par Description:
  *This API should be called **before** `Connect(ip)`
- *@return return true if success, otherwise return false.
  *
  *@attention None
  *
  *@see None.
  */
-bool InitializeSystem(void);
+void InitializeSystem(void);
 /**
  *@ingroup MLFlare
  *@brief Release and save config parameters.
  *@par Description:
  *This API should be called **after** `Disconnect`. When exit system, this api should be called.
- *@return return true if success, otherwise return false.
  *
  *@attention When exit system, this api should be called.
  *
  *@see None.
  */
-bool ReleaseSysResource(void);
+void ReleaseSysResource(void);
 /**
  *@ingroup MLFlare
  *@brief Reset all axis to ORG.
@@ -462,27 +455,25 @@ double LaserCalibrator(double offset);
  *@brief Open auto-door.
  *@par Description:
  *When open auto-door, the light will open also.
-*@return the result of auto-door
  *
  *@attention None.
  *
  *@see None.
  *
  */
-bool DoorOpen(void);
+void DoorOpen(void);
 /**
  *@ingroup MLFlare
  *@brief close auto-door.
  *@par Description:
  *When close auto-door, the light will close also.
- *@return the result of auto-door
  *
  *@attention None.
  *
  *@see None.
  *
  */
-bool DoorClose(void);
+void DoorClose(void);
 /**
  *@ingroup MLFlare
  *@brief Auto hold the holder, when the loadcell value is ok, stop move and get the current postion of axis.

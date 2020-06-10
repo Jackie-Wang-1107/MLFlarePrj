@@ -36,8 +36,6 @@ bool PutDoubleValue(char *title, char *key, double value);
 
 bool InsertStringValue(char *title, char *searchKey, char *key, char *value);
 
-char *GetConfigFileErrorMessage(void);
-
 int ModifyKeyString(char *title,char *val);
 int checkTitle(char *title);
 #endif /* MLConfiger_h */
